@@ -1,0 +1,41 @@
+{
+  "name": "noteall",
+  "version": "0.1.0",
+  "private": true,
+  "description": "판서노트 + 파워포인트/한글 불러오기 (Windows 데스크톱)",
+  "author": "jinheewhite",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "build": {
+    "appId": "kr.jinheewhite.noteall",
+    "productName": "noteall",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "jinheewhite",
+      "repo": "noteall"
+    }
+  }
+}
