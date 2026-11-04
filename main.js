@@ -1,10 +1,13 @@
 /* noteall — note(판서노트)의 화면·기능은 그대로 두고, 여기에 파워포인트·
-   한글(한쇼) 불러오기를 더합니다. 1단계: 슬라이드를 이미지로 뽑아 note
-   화면에 페이지처럼 띄웁니다. 그 전 단계로, COM 자동화가 되려면 그 PC에
-   프로그램이 실제로 설치되어 있어야 하므로, 없으면 켤 때 바로 알려 줍니다. */
-const { app, BrowserWindow, dialog } = require('electron');
+   한글(한쇼) 불러오기를 더합니다. 그 PC에 실제 설치된 파워포인트·한글을
+   COM 자동화로 띄워 PDF로 저장시키고, note가 이미 가진 "PDF 열기" 경로에
+   그대로 넘깁니다 — note의 화면·필기·저장 로직은 한 줄도 안 건드립니다. */
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { autoUpdater } = require('electron-updater');
 
 /* ProgID가 레지스트리(HKEY_CLASSES_ROOT)에 등록되어 있으면 설치된 것으로 봅니다.
    64비트 reg.exe는 기본적으로 64비트 보기만 보므로, 32비트로 설치된 프로그램을
@@ -46,6 +49,54 @@ function warnMissing({ hasPowerPoint, hasHangul }) {
   });
 }
 
+const OFFICE_EXT_KIND = {
+  '.ppt': 'ppt', '.pptx': 'ppt',
+  '.hwp': 'hwp', '.hwpx': 'hwp',
+};
+
+function convertToPdf(inputPath) {
+  return new Promise((resolve, reject) => {
+    const kind = OFFICE_EXT_KIND[path.extname(inputPath).toLowerCase()];
+    if (!kind) return reject(new Error('지원하지 않는 파일 형식입니다 (파워포인트·한글만 됩니다).'));
+
+    const outputPath = path.join(os.tmpdir(), `noteall-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+    const scriptPath = path.join(__dirname, 'convert.ps1');
+    execFile('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-File', scriptPath,
+      '-Kind', kind, '-InputPath', inputPath, '-OutputPath', outputPath,
+    ], { timeout: 120000, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(`변환 중 문제가 생겼습니다: ${(stderr || err.message).trim()}`));
+      if (!fs.existsSync(outputPath)) return reject(new Error('변환된 PDF를 찾을 수 없습니다.'));
+      resolve(outputPath);
+    });
+  });
+}
+
+ipcMain.handle('pick-office-file', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: '파워포인트·한글 파일 열기',
+    filters: [
+      { name: '파워포인트·한글', extensions: ['pptx', 'ppt', 'hwp', 'hwpx'] },
+    ],
+    properties: ['openFile'],
+  });
+  if (canceled || !filePaths.length) return null;
+  return filePaths[0];
+});
+
+ipcMain.handle('import-office', async (event, inputPath) => {
+  const pdfPath = await convertToPdf(inputPath);
+  try {
+    const bytes = fs.readFileSync(pdfPath);
+    const name = path.basename(inputPath, path.extname(inputPath)) + '.pdf';
+    return { bytes, name };
+  } finally {
+    fs.unlink(pdfPath, () => {});
+  }
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -53,6 +104,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
   win.loadFile(path.join(__dirname, 'index.html'));
@@ -67,6 +119,13 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  /* note의 PWA 판과 같은 철학 — 조용히 새 판을 받아 두고, 다음에 켤 때
+     자동으로 적용합니다. 업데이트를 확인하는 순간에만 통신이 생기고,
+     그 외에는 완전히 오프라인입니다. */
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.checkForUpdates().catch(() => {});
 });
 
 app.on('window-all-closed', () => {

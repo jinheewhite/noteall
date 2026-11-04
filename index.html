@@ -1055,6 +1055,7 @@ try{
   <span id="saveWhere" class="where" hidden></span>
   <span id="verLabel" hidden></span>
   <button class="primary big" id="btnOpen2" hidden>PDF 열기</button>
+  <button class="primary big" id="btnOpenOffice" hidden>파워포인트·한글 열기</button>
   <div id="modeBadge" hidden></div>
 </div>
 
@@ -6779,6 +6780,34 @@ $('jsonInput').onchange=async e=>{
     if(S.fitting&&S.doc)renderPage();
     if(S.split)bdResize();
   },250)});
+})();
+</script>
+<script>
+/* noteall 전용 — 파워포인트·한글 불러오기. preload.js가 window.noteall 을
+   올려 둔 Electron 안에서만 보입니다(일반 브라우저로 열면 그냥 안 보임). */
+(function(){
+  if(!window.noteall)return;
+  const btn2=$('btnOpen2'), btn=$('btnOpenOffice');
+  const syncHidden=()=>{ if(btn2.hidden)btn.setAttribute('hidden','');else btn.removeAttribute('hidden') };
+  syncHidden();
+  new MutationObserver(syncHidden).observe(btn2,{attributes:true,attributeFilter:['hidden']});
+
+  btn.onclick=async()=>{
+    if(btn.disabled)return;
+    btn.disabled=true;
+    const was=btn.textContent;btn.textContent='변환 중…(시간이 좀 걸립니다)';
+    try{
+      const res=await window.noteall.importOfficeFile();
+      if(!res)return;                              /* 취소 */
+      if(typeof autoGoFull==='function')autoGoFull();
+      if(S.doc){await saveNow();if(S.edited)await AutoDL.run(true)}
+      await loadPdf(res.bytes,res.name);
+    }catch(err){
+      toast('불러오지 못했습니다: '+(err&&err.message||err));
+    }finally{
+      btn.disabled=false;btn.textContent=was;
+    }
+  };
 })();
 </script>
 </body>
