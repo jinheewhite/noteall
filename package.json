@@ -30,7 +30,8 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": false,
+      "artifactName": "noteall-Setup.exe"
     },
     "publish": {
       "provider": "github",
