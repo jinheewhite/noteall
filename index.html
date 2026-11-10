@@ -6188,7 +6188,7 @@ async function renderRecent(){
   let all=driveGone?[]:(await Store.allFiles()).filter(x=>x&&!String(x.id).startsWith('__'));
   /* 켤 때 가끔 같은 자료가 두 번씩 보이는 문제의 안전장치 — 원인을 아직
      못 찾아서, 같은 id 는 그릴 때 하나만 남기도록 걸러 둡니다. */
-  { const seen=new Set(); all=all.filter(x=>{ if(seen.has(x.id))return false; seen.add(x.id); return true; }); }
+  { const seen=new Set(); all=all.filter(x=>{ if(seen.has(x.name))return false; seen.add(x.name); return true; }); }
   const list=$('recentList'),grid=$('folderGrid');
   const addCard=()=>{
     const c=document.createElement('div');c.className='card newcard';
