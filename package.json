@@ -37,7 +37,7 @@
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "artifactName": "kijun_note-Setup.exe",
+      "artifactName": "noteall-Setup.exe",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
