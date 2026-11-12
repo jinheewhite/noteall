@@ -149,12 +149,12 @@ try{
   #tools>#btnSplit{order:2}
   #tools>#btnCut{order:3}
   #tools>#btnShape{order:4}
-  #tools>#btnEraser{order:5}
-  #tools>#btnEraserSm{order:5}        /* 작게·중간 지우개가 order 를 안 받아 맨 앞으로 떨어져 있었습니다 */
-  #tools>#btnEraseAll{order:5}        /* 지우개 바로 옆 — 같은 order 는 쓴 순서대로 놓입니다 */
-  #tools>#btnLaser{order:6}
-  #tools>#btnHl{order:7}
-  #tools>#btnPen{order:8}
+  #tools>#btnEraserSm{order:5}        /* 작게 → 중간 → 전체지우기 순서 */
+  #tools>#btnEraser{order:6}
+  #tools>#btnEraseAll{order:7}
+  #tools>#btnLaser{order:8}
+  #tools>#btnHl{order:9}
+  #tools>#btnPen{order:10}
   #tools>#swatches{display:none}      /* 색은 길게 꾹으로 — 가로 246px 자리를 뺍니다 */
   #btnEraser2,#btnEraseAll2{display:none}  /* 여분 지우개 — 도구가 다 오른쪽이라 뺍니다 */
   /* '손 ✍' 토글은 없앴습니다 — 손끝·펜은 늘 필기, 이동은 ✋ 하나로 */
@@ -6329,35 +6329,20 @@ async function pickFolder(file){
 async function cleanupDuplicateFiles(){
   try{
     const all=(await Store.allFiles()).filter(x=>x&&!String(x.id).startsWith('__'));
-    console.log('[DEDUP DEBUG] mode=',Store.mode,'count=',all.length,
-      JSON.stringify(all.map(f=>({id:f.id,name:f.name,opened:f.opened,sig:f.sig}))));
     const groups=new Map();
     for(const f of all){
       const key=String(f.name||'').normalize('NFC').trim();
       if(!groups.has(key))groups.set(key,[]);
       groups.get(key).push(f);
     }
-    let dupGroups=0,deleted=0;
     for(const list of groups.values()){
       if(list.length<2)continue;
-      dupGroups++;
-      console.log('[DEDUP DEBUG] group of',list.length,'for name',JSON.stringify(list[0].name));
       list.sort((a,b)=>(b.opened||0)-(a.opened||0));
-      for(const dup of list.slice(1)){
-        console.log('[DEDUP DEBUG] deleting id',dup.id);
-        await Store.delFile(dup.id);deleted++;
-      }
+      for(const dup of list.slice(1))await Store.delFile(dup.id);
     }
-    const after=(await Store.allFiles()).filter(x=>x&&!String(x.id).startsWith('__'));
-    console.log('[DEDUP DEBUG] after cleanup count=',after.length);
-    /* 임시 진단 — 개발자 도구 없이도 눈으로 바로 확인할 수 있게 */
-    setTimeout(()=>toast(`진단: 저장소 ${all.length}개(겹친 묶음 ${dupGroups}, 지움 ${deleted}) → 정리 후 ${after.length}개`),2500);
-  }catch(e){console.log('[DEDUP DEBUG] error',e&&e.message);setTimeout(()=>toast('진단 오류: '+(e&&e.message)),2500)}
+  }catch(e){}
 }
-let __renderRecentCalls=0;
 async function renderRecent(){
-  const __callNo=++__renderRecentCalls;
-  console.log('[DEDUP DEBUG] renderRecent call #'+__callNo+' START, S.sort='+S.sort);
   /* 서재를 보고 있는지 표시합니다. 처음 앱을 열 때는 서재가 원래부터
      떠 있어 '켜는 코드'가 돌지 않으므로, 그릴 때마다 맞춰 줍니다. */
   setLibOpen(!S.doc);
@@ -6507,8 +6492,6 @@ async function renderRecent(){
   }
   $('libEmpty').hidden=true;
   $('libEmpty').textContent=S.q?'검색 결과가 없습니다.':'아직 자료가 없습니다. 위의 PDF 열기로 수업 자료를 불러오세요.';
-  console.log('[DEDUP DEBUG] renderRecent call #'+__callNo+' END files.length='+files.length+' list.children='+list.children.length+' grid.children='+grid.children.length);
-  if(__callNo<=3)setTimeout(()=>toast(`그리기#${__callNo}: 자료 ${files.length}개 → 화면 카드 ${list.children.length}개`),4500+__callNo*500);
 }
 
 /* 표지의 ⋯ 메뉴 */
