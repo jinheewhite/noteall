@@ -27,8 +27,9 @@ contextBridge.exposeInMainWorld('noteall', {
   },
   winMinimize: () => ipcRenderer.invoke('win-minimize'),
   openWhale: () => ipcRenderer.invoke('open-naver-whale'),
-  openDownloadPage: () => ipcRenderer.invoke('open-download-page'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  isUpdateReady: () => ipcRenderer.invoke('is-update-ready'),
+  installUpdateNow: () => ipcRenderer.invoke('install-update-now'),
   // 서재 "웨일 열기"의 <webview>에 심을 전용 preload 경로(window.open 가짜 탭 보강용)
   // (샌드박스 preload에서는 require('path')도 __dirname도 못 써서, 메인 프로세스에 물어봅니다)
   getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path'),

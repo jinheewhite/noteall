@@ -96,12 +96,6 @@ ipcMain.handle('open-naver-whale', () => {
   execFile('cmd.exe', ['/c', 'start', '', 'whale', 'https://www.naver.com', '--start-maximized'], { windowsHide: true });
 });
 
-/* 서재 화면의 "다운로드" 홍보 버튼 — 다른 선생님이 설치 파일을 받을 수 있게
-   기본 브라우저로 다운로드 페이지를 엽니다. */
-ipcMain.handle('open-download-page', () => {
-  shell.openExternal('https://botem.com/noteall');
-});
-
 /* 서재 제목 옆 버전 표시용 — 설치 파일(package.json)의 버전 그대로 */
 ipcMain.handle('get-app-version', () => app.getVersion());
 
@@ -409,6 +403,12 @@ app.whenReady().then(async () => {
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.checkForUpdates().catch(() => {});
 });
+
+/* 서재 제목 옆 "업그레이드" 버튼 — 받아서 설치할 준비가 끝났을 때만 보여줍니다. */
+let updateReady = false;
+autoUpdater.on('update-downloaded', () => { updateReady = true; });
+ipcMain.handle('is-update-ready', () => updateReady);
+ipcMain.handle('install-update-now', () => autoUpdater.quitAndInstall());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

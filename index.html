@@ -881,8 +881,6 @@ try{
   <button id="btnOpen" hidden>PDF 열기</button>
   <span class="tstat">
     <span class="saved pageChip" title="지금 보고 있는 쪽">쪽 <b id="pageInfo">– / –</b></span>
-    <!-- 지금 버전 — 누르면 새 판이 있는지 바로 확인합니다(설정에 들어가지 않아도). -->
-    <button class="verChip" id="btnVerChip" title="누르면 새 판이 있는지 확인합니다"></button>
     <!-- 손바닥(🖐)이었는데 '이동' 으로 잘못 읽혔습니다 — 사용법이니 물음표로 -->
     <button class="icon" id="btnGuide" data-hover="사용법 — 손동작과 기능" title="사용법">
       <svg viewBox="0 0 26 26" width="26" height="26" aria-hidden="true" fill="none"
@@ -1043,7 +1041,7 @@ try{
     <button id="btnFitP" title="쪽 전체가 보이게 맞춥니다">⧉ 쪽</button>
     <button id="btnRotate" title="누를 때마다 페이지가 90도씩 돌아갑니다">⟳ 회전</button>
 
-    <button class="icon tool" data-label="지우개" id="btnEraser2" data-tool="eraser"
+    <button class="icon tool" data-label="지우개" id="btnEraser2" data-tool="eraser" data-erasesize="16"
             title="지우개 — 반대쪽에서도 쓸 수 있게 오른쪽 끝에도 놓았습니다">
       <svg viewBox="0 0 26 26" width="32" height="32" aria-hidden="true" fill="none"
            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -1112,7 +1110,7 @@ try{
         <button id="webReload" title="새로고침">⟳</button>
         <input id="webAddr" type="text" placeholder="검색어 또는 주소" spellcheck="false">
         <button id="webGo" title="이동">이동</button>
-        <button id="webDraw" title="필기 켜기/끄기 — 켜면 화면 위에 바로 쓰고, 끄면 웹페이지를 그대로 조작합니다">✎ 필기 꺼짐</button>
+        <button id="webDraw" title="도구 켜기/끄기 — 켜면 고른 도구(펜·지우개 등)로 화면 위에 바로 쓰고, 끄면 웹페이지를 그대로 조작합니다">✎ 도구 꺼짐</button>
         <button id="webExit" title="크롬 닫고 서재로 나가기" style="margin-left:auto"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" style="vertical-align:-3px;margin-right:4px"><path d="M15 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 12h11M17 8l4 4-4 4" stroke="#f5d547" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>나가기</button>
       </div>
       <div id="webTabs" hidden>
@@ -1132,7 +1130,7 @@ try{
     <div style="display:flex;align-items:center;gap:10px">
       <h1 id="libTitle2" style="margin:0">서재</h1>
       <span id="appVerChip" class="verChip" style="pointer-events:none;min-height:auto;padding:2px 9px;font-size:12px"></span>
-      <button id="btnPromoDownload" class="primary" style="min-height:34px;padding:0 16px;font-size:13px">⬇ 다운받기</button>
+      <button id="btnUpgradeNow" class="primary" hidden style="min-height:34px;padding:0 16px;font-size:13px">⬆ 업그레이드</button>
     </div>
     <div class="libtools">
       <div class="segs">
@@ -2499,9 +2497,15 @@ async function loadPdf(bytes,name,id){
   S.pages=S.doc.numPages;S.page=1;S.fileName=name;
   const sig=fileSig(bytes);
   if(!id){
-    /* 서재에 같은 내용이 이미 있으면 그것을 이어 씁니다 */
+    /* 서재에 같은 내용이 이미 있으면 그것을 이어 씁니다.
+       파워포인트·한글 변환은 다시 변환할 때마다 내부 타임스탬프가 바뀌어
+       바이트가 완전히 같지는 않을 수 있어, 내용이 다르면 이름으로도 같은
+       자료를 찾습니다 — 그래야 같은 파일을 다시 열 때마다 서재에
+       새로 쌓이지 않습니다. */
     try{
-      const same=(await Store.allFiles()).find(f=>f&&f.sig===sig&&!String(f.id).startsWith('__'));
+      const list=(await Store.allFiles()).filter(f=>f&&!String(f.id).startsWith('__'));
+      const nname=String(name).normalize('NFC').trim();
+      const same=list.find(f=>f.sig===sig)||list.find(f=>String(f.name).normalize('NFC').trim()===nname);
       if(same){id=same.id;name=same.name;S.fileName=name;$('fileName').textContent=name}
     }catch(e){}
   }
@@ -4972,7 +4976,9 @@ function eraserPx(){return Math.round(eraseR()*2)}
 /* 펜·형광펜·레이저·이동도 지우개처럼 도구 모양 커서를 씁니다 — 전에는
    십자가(펜) 나 브라우저 기본 손(이동, 작아서 찾기 힘들다고 하셨습니다) 이었습니다. */
 function applyCursor(){
-  const targets=[inkCv,bdCv].filter(Boolean);
+  /* 크롬(웹) 화면 위 필기 레이어(webInk)도 포함합니다 — 빠져 있으면
+     지우개를 눌러도 거기서만 동그라미 커서로 남아 있었습니다. */
+  const targets=[inkCv,bdCv,$('webInk')].filter(Boolean);
   const t=S.tool, a=CUR_ART[t];
   if(a){
     /* 지우개만 굵기에 맞춰 커지고, 나머지는 알아보기 좋은 고정 크기입니다.
@@ -5051,8 +5057,12 @@ function setTool(t,btn){
   if(S.doc)applyView();
   else{const sh=$('sheet');if(sh){sh.style.transform='';sh.style.transformOrigin=''}}
   S.tool=t;
-  /* 크롬(웹) 화면 위에 바로 쓸 때 — '이동'을 고르면 웹페이지를 실제로
-     조작할 수 있게(클릭·스크롤) 필기 레이어가 클릭을 가로채지 않습니다. */
+  /* 크롬(웹) 화면 위에서는 도구 자체가 "필기 켜짐/꺼짐" 을 정합니다 —
+     펜·형광펜·지우개·레이저를 고르면 바로 그릴 수 있게, '이동'을 고르면
+     웹페이지를 실제로 조작할 수 있게(클릭·스크롤) 필기 레이어가 클릭을
+     가로채지 않습니다. 매번 따로 "필기 켜짐" 단추를 또 누를 필요가
+     없습니다 — 도구만 고르면 됩니다. */
+  if(S.webDoc&&typeof setWebDraw==='function')setWebDraw(typeof webDrawsTool==='function'?webDrawsTool(t):(t!=='hand'));
   if(typeof syncWebInkMode==='function')syncWebInkMode();
   if(typeof syncEraserCursor==='function')syncEraserCursor();
   /* 도형 말고 다른 도구로 가면 고른 도형을 놓습니다 */
@@ -5707,7 +5717,19 @@ function bumpSize(d){
 $('btnThin').onclick=()=>bumpSize(-1);
 $('btnThick').onclick=()=>bumpSize(1);
 $('btnUndo').onclick=undoOnce;
+/* 크롬(웹) 화면 위 필기는 S.strokes 가 아니라 webStrokes 라는 완전히
+   별개의 자리에 쌓입니다 — 그걸 몰라서 "이 쪽 지우기"·"전체 쪽 비우기"가
+   크롬에서는 PDF 쪽 걸 보며 "비어 있다"고만 하고 실제로는 아무것도
+   지우지 못했습니다. 여기서도 같은 버튼으로 지울 수 있게 합니다. */
 $('btnClear').onclick=async()=>{
+  if(S.webDoc){
+    if(!webStrokes.length){toast('지금 화면에 필기가 없습니다');return}
+    if(await askConfirm('크롬 화면의 필기를 모두 지웁니다. 계속할까요?')){
+      webStrokes=[];webCur=null;redrawWebInk();
+      setTool('hand',$('btnHand'));
+    }
+    return;
+  }
   if(!S.strokes.length)return;
   if(await askConfirm(`${S.page}쪽의 필기를 모두 지웁니다. 계속할까요?`)){
     S.strokes=[];S.edited=true;redraw();saveNow();
@@ -5718,6 +5740,13 @@ $('btnClear').onclick=async()=>{
   snap('pdf');
 };
 $('btnClearAll').onclick=async()=>{
+  if(S.webDoc){
+    if(!webStrokes.length){toast('지금 화면에 필기가 없습니다');return}
+    if(!await askConfirm('크롬 화면의 필기를 모두 지웁니다. 계속할까요?'))return;
+    webStrokes=[];webCur=null;redrawWebInk();
+    toast('필기를 지웠습니다');
+    return;
+  }
   if(!S.doc)return;
   const pages=[...S.pageHas];
   if(!pages.length&&!S.strokes.length){toast('오늘 필기가 없습니다');return}
@@ -5956,31 +5985,73 @@ function closeWebBoard(){
 }
 /* 크롬(웹) 화면 위에 바로 쓰는 투명 필기 레이어 — 칠판(BD)과는 완전히
    별개의, 이 세션에서만 쓰는 가벼운 레이어입니다(저장 안 함, PDF 변환
-   안 함 — 처음 합의한 범위 그대로입니다). '이동' 도구일 때만 클릭이
-   그 밑 웹페이지로 그대로 전달됩니다. */
+   안 함 — 처음 합의한 범위 그대로입니다). 다만 펜·형광펜·지우개·레이저가
+   PDF·칠판과 "똑같이" 움직이도록, 지우개는 PDF와 같은 cutStrokes()로
+   실제 점을 지우고(래스터 흉내가 아니라), 레이저는 PDF와 같은
+   값(laser.HOLD/FADE)으로 번졌다 사라집니다. '이동' 도구일 때만
+   클릭이 그 밑 웹페이지로 그대로 전달됩니다 — 그 외 도구는 전부
+   그려야 하므로, 지금 도구가 그리는 도구인지부터 확인합니다. */
 let webStrokes=[],webCur=null,webDrawOn=false;
-function webInkActive(){ return S.webDoc&&webDrawOn; }
+function webDrawsTool(t){ return t==='pen'||t==='hl'||t==='eraser'||t==='laser'; }
+function webInkActive(){ return S.webDoc&&webDrawOn&&webDrawsTool(S.tool); }
+const webLaser={list:[],raf:0,last:0};
+function webLaserPoint(x,y,start){
+  webLaser.last=performance.now();
+  if(start)webLaser.list.push({pts:[[x,y]],w:(S.sizes.laser||8)*1.4,color:S.colors.laser});
+  else{const s=webLaser.list[webLaser.list.length-1];if(s)s.pts.push([x,y])}
+  while(webLaser.list.length>60)webLaser.list.shift();
+  if(!webLaser.raf)webLaser.raf=requestAnimationFrame(webLaserTick);
+}
+function webLaserTick(){
+  const idle=performance.now()-webLaser.last;
+  const a=idle<laser.HOLD?1:Math.max(0,1-(idle-laser.HOLD)/laser.FADE);
+  redrawWebInk();
+  if(a<=0){webLaser.list=[];webLaser.raf=0;return}
+  const el=$('webInk');if(!el){webLaser.raf=0;return}
+  const cx=el.getContext('2d');
+  for(const s of webLaser.list){
+    cx.save();
+    const col=s.color||'#ff3b30';
+    cx.globalAlpha=a;cx.strokeStyle=col;cx.lineWidth=s.w;
+    cx.lineCap='round';cx.lineJoin='round';
+    cx.shadowColor=col;cx.shadowBlur=Math.max(10,s.w*1.8);
+    cx.beginPath();cx.moveTo(s.pts[0][0],s.pts[0][1]);
+    if(s.pts.length===1)cx.lineTo(s.pts[0][0]+.1,s.pts[0][1]);
+    for(let i=1;i<s.pts.length;i++)cx.lineTo(s.pts[i][0],s.pts[i][1]);
+    cx.stroke();cx.restore();
+  }
+  webLaser.raf=requestAnimationFrame(webLaserTick);
+}
 function syncWebInkMode(){
   const el=$('webInk');if(!el)return;
   el.style.pointerEvents=webInkActive()?'auto':'none';
   const b=$('webDraw');if(!b)return;
-  b.textContent=webDrawOn?'✎ 필기 켜짐':'✎ 필기 꺼짐';
+  b.textContent=webDrawOn?'✎ 도구 켜짐':'✎ 도구 꺼짐';
   b.classList.toggle('on',webDrawOn);
 }
 function setWebDraw(on){
+  /* 도구를 끄면(이동으로 바꾸거나 직접 끄면) 그려 둔 필기를 자동으로
+     지웁니다 — 애초에 저장하지 않는 세션용 필기라, 끄는 순간이 바로
+     "이 화면 다 봤다"는 뜻이기 때문입니다. */
+  if(webDrawOn&&!on&&webStrokes.length){
+    webStrokes=[];webCur=null;
+    webLaser.list=[];webLaser.raf=0;
+    redrawWebInk();
+  }
   webDrawOn=on;
   syncWebInkMode();
 }
 function paintWebStroke(cx,s){
+  /* 지우개는 이제 webStrokes 에 들어오지 않습니다(cutStrokes 로 점 자체를
+     지웁니다) — 여기는 펜·형광펜만 그립니다. */
   if(!s.pts.length)return;
   cx.save();
-  if(s.tool==='eraser')cx.globalCompositeOperation='destination-out';
-  else{cx.globalCompositeOperation='source-over';cx.strokeStyle=s.color;cx.globalAlpha=(s.tool==='hl')?.35:1}
+  cx.globalCompositeOperation='source-over';cx.strokeStyle=s.color;cx.globalAlpha=(s.tool==='hl')?.35:1;
   cx.lineWidth=s.size;cx.lineCap='round';cx.lineJoin='round';
   if(s.pts.length===1){
-    /* 끌지 않고 콕 찍기만 해도(눌렀다 바로 떼도) 점 하나는 남게(지워지게) */
+    /* 끌지 않고 콕 찍기만 해도(눌렀다 바로 떼도) 점 하나는 남게 */
     cx.beginPath();cx.arc(s.pts[0][0],s.pts[0][1],s.size/2,0,Math.PI*2);
-    if(s.tool==='eraser')cx.fill();else{cx.fillStyle=s.color;cx.fill()}
+    cx.fillStyle=s.color;cx.fill();
     cx.restore();return;
   }
   cx.beginPath();cx.moveTo(s.pts[0][0],s.pts[0][1]);
@@ -6004,18 +6075,36 @@ function resizeWebInk(){
 }
 (function(){
   const el=$('webInk');if(!el)return;
+  /* 지우개는 PDF·칠판과 똑같이 cutStrokes() 로 실제 점을 지웁니다(끈 뒤에
+     한 번에 지우는 게 아니라, PDF처럼 끄는 동안 바로바로 지워집니다).
+     레이저는 webLaserPoint() 로 — webStrokes 에는 전혀 들어가지 않고
+     PDF와 같은 시간(laser.HOLD/FADE)으로 번졌다 사라집니다. */
   el.addEventListener('pointerdown',e=>{
     if(!webInkActive())return;
     try{el.setPointerCapture(e.pointerId)}catch(err){}
     const r=el.getBoundingClientRect();
+    const x=e.clientX-r.left,y=e.clientY-r.top;
+    if(S.tool==='laser'){webLaserPoint(x,y,true);return}
+    if(S.tool==='eraser'){
+      const out=cutStrokes(webStrokes,(st,q)=>q,x,y,eraseR());
+      if(out){webStrokes=out;redrawWebInk()}
+      return;
+    }
     const color=S.colors[S.tool]||S.colors.pen;
-    const size=(S.sizes[S.tool]||S.sizes.pen)*(S.tool==='eraser'?2.2:1);
-    webCur={tool:S.tool,color,size,pts:[[e.clientX-r.left,e.clientY-r.top]]};
+    webCur={tool:S.tool,color,size:S.sizes[S.tool]||S.sizes.pen,pts:[[x,y]]};
   });
   el.addEventListener('pointermove',e=>{
-    if(!webCur)return;
+    if(!webInkActive())return;
     const r=el.getBoundingClientRect();
-    webCur.pts.push([e.clientX-r.left,e.clientY-r.top]);
+    const x=e.clientX-r.left,y=e.clientY-r.top;
+    if(S.tool==='laser'){webLaserPoint(x,y,false);return}
+    if(S.tool==='eraser'){
+      const out=cutStrokes(webStrokes,(st,q)=>q,x,y,eraseR());
+      if(out){webStrokes=out;redrawWebInk()}
+      return;
+    }
+    if(!webCur)return;
+    webCur.pts.push([x,y]);
     redrawWebInk();
   });
   const endStroke=()=>{ if(webCur){webStrokes.push(webCur);webCur=null} };
@@ -6096,13 +6185,16 @@ $('btnUp').onclick=()=>{S.lib='';renderFolders();renderRecent()};
 if(window.noteall&&window.noteall.getAppVersion){
   window.noteall.getAppVersion().then(v=>{const el=$('appVerChip');if(el&&v)el.textContent='v'+v});
 }
-/* 서재 맨 아래 홍보 도식의 다운로드 버튼 — 다른 선생님 PC에서는 보통
-   브라우저가 뜰 수 있게(window.noteall) 메인 프로세스에 맡기고,
-   혹시 브라우저로 바로 연 경우엔 그냥 새 탭으로 엽니다. */
-$('btnPromoDownload')&&($('btnPromoDownload').onclick=()=>{
-  if(window.noteall&&window.noteall.openDownloadPage)window.noteall.openDownloadPage();
-  else window.open('https://botem.com/noteall','_blank');
-});
+/* 서재 제목 옆 업그레이드 버튼 — 새 판을 다 받아 설치할 준비가 됐을 때만 보입니다.
+   조용히 받는 동안(아직 설치 준비 전)에는 안 보이다가, 준비되면 나타납니다. */
+if(window.noteall&&window.noteall.isUpdateReady){
+  const btnUpg=$('btnUpgradeNow');
+  if(btnUpg){
+    btnUpg.onclick=()=>window.noteall.installUpdateNow&&window.noteall.installUpdateNow();
+    const poll=()=>window.noteall.isUpdateReady().then(ready=>{btnUpg.hidden=!ready});
+    poll();setInterval(poll,60000);
+  }
+}
 /* 탐색기에서 지운 폴더를 서재에서도 없앱니다 */
 $('btnSync').onclick=async()=>{
   if(!Backup.ok){await renderFolders();await renderRecent();toast('새로고침했습니다');return}
@@ -6125,14 +6217,17 @@ $('btnSync').onclick=async()=>{
     toast(gone.length?`${gone.length}개를 정리했습니다`:'저장 폴더와 같습니다');
   }catch(e){toast('저장 폴더를 읽지 못했습니다')}
 };
-function setSort(v){
+function setSort(v,skipRender){
   S.sort=v;
   try{localStorage.setItem('pn.sort',v)}catch(e){}
   $('btnSort').classList.toggle('on',v==='recent');
   $('btnSortName').classList.toggle('on',v==='name');
   $('btnSortFolder').classList.toggle('on',v==='folder');
   $('btnNewFolder')&&($('btnNewFolder').hidden=(v!=='folder')||!!S.lib);
-  renderRecent();
+  /* 시작할 때는 바로 뒤에서 renderRecent()를 따로, 기다리며 부르므로
+     여기서 또 부르면 두 그리기가 겹쳐 서재가 잠깐 두 벌로 보일 수
+     있었습니다 — 시작 때만 건너뜁니다. */
+  if(!skipRender)renderRecent();
 }
 $('btnSort').onclick=()=>setSort('recent');
 $('btnSortName').onclick=()=>setSort('name');
@@ -6221,6 +6316,26 @@ async function pickFolder(file){
   box.onclick=e=>{if(e.target===box)box.classList.remove('open')};
 }
 
+/* 서재에 같은 자료가 여러 개 쌓인 걸 한 번 정리합니다(이름 기준,
+   공백 다듬고 자모 결합형 맞춤). 가장 최근에 연 것만 남기고 나머지는
+   지웁니다 — 매번 그릴 때마다 숨기기만 하면 저장소에 계속 쌓이므로,
+   시작할 때 딱 한 번 실제로 정리합니다. */
+async function cleanupDuplicateFiles(){
+  try{
+    const all=(await Store.allFiles()).filter(x=>x&&!String(x.id).startsWith('__'));
+    const groups=new Map();
+    for(const f of all){
+      const key=String(f.name||'').normalize('NFC').trim();
+      if(!groups.has(key))groups.set(key,[]);
+      groups.get(key).push(f);
+    }
+    for(const list of groups.values()){
+      if(list.length<2)continue;
+      list.sort((a,b)=>(b.opened||0)-(a.opened||0));
+      for(const dup of list.slice(1))await Store.delFile(dup.id);
+    }
+  }catch(e){}
+}
 async function renderRecent(){
   /* 서재를 보고 있는지 표시합니다. 처음 앱을 열 때는 서재가 원래부터
      떠 있어 '켜는 코드'가 돌지 않으므로, 그릴 때마다 맞춰 줍니다. */
@@ -6238,9 +6353,11 @@ async function renderRecent(){
   const missBanner=$('driveMissBanner');
   if(missBanner)missBanner.hidden=!driveGone;
   let all=driveGone?[]:(await Store.allFiles()).filter(x=>x&&!String(x.id).startsWith('__'));
-  /* 켤 때 가끔 같은 자료가 두 번씩 보이는 문제의 안전장치 — 원인을 아직
-     못 찾아서, 같은 id 는 그릴 때 하나만 남기도록 걸러 둡니다. */
-  { const seen=new Set(); all=all.filter(x=>{ if(seen.has(x.name))return false; seen.add(x.name); return true; }); }
+  /* 켤 때 가끔 같은 자료가 두 번씩 보이는 문제의 안전장치 — 파워포인트·
+     한글 변환은 다시 변환할 때마다 바이트가 조금씩 달라져 내용으로는
+     못 걸러낼 수 있어, 이름을 공백 다듬고(trim) 자모 결합형을 한 가지로
+     맞춘(normalize) 뒤 겹치면 하나만 남깁니다. */
+  { const seen=new Set(); all=all.filter(x=>{ const key=String(x.name||'').normalize('NFC').trim(); if(seen.has(key))return false; seen.add(key); return true; }); }
   const list=$('recentList'),grid=$('folderGrid');
   const addCard=()=>{
     const c=document.createElement('div');c.className='card newcard';
@@ -7278,13 +7395,10 @@ $('jsonInput').onchange=async e=>{
 (async()=>{
   const step=async(fn)=>{try{await fn()}catch(e){console.warn('시작 단계 건너뜀',e)}};
   $('verLabel2').textContent=APP_VER;
-  if($('btnVerChip')){
-    $('btnVerChip').textContent='v'+APP_VER;
-    $('btnVerChip').onclick=checkUpdate;
-  }
   loadFinger();updateTouchBtn();
   await step(()=>Store.init());
   await step(async()=>{ if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist() });
+  await step(()=>cleanupDuplicateFiles());
   await step(()=>Backup.load());
   $('modeBadge').innerHTML=Store.mode==='idb'?'':modeBadge();
   try{S.sort=localStorage.getItem('pn.sort')||'recent';S.view=localStorage.getItem('pn.view')||'grid';
