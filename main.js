@@ -10,6 +10,21 @@ const fsp = fs.promises;
 const os = require('os');
 const { autoUpdater } = require('electron-updater');
 
+/* 앱을 두 번 실행하면 같은 저장소(IndexedDB 등)를 두 개의 완전히 다른
+   프로세스가 동시에 붙잡아, 서재에 자료가 두 번씩 보이는 등 저장소가
+   꼬이는 원인이 되고 있었습니다. 두 번째 실행은 창만 새로 안 만들고,
+   이미 떠 있는 창을 그냥 앞으로 가져옵니다. */
+let mainWindow = null;
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+}
+
 /* 저장 폴더 — 브라우저용 File System Access API(showDirectoryPicker) 대신
    Node fs를 직접 씁니다. 이 앱은 늘 윈도우 PC에서만 도니, 매번 사용자가
    고르게 하지 않고 "문서\기전판서앱"에 처음부터 자동으로 연결해 둡니다.
@@ -369,6 +384,8 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'index.html'));
   win.webContents.on('console-message', (_e, _level, message) => console.log('[renderer]', message));
+  mainWindow = win;
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
   return win;
 }
 
