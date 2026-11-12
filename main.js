@@ -102,6 +102,9 @@ ipcMain.handle('open-download-page', () => {
   shell.openExternal('https://botem.com/noteall');
 });
 
+/* 서재 제목 옆 버전 표시용 — 설치 파일(package.json)의 버전 그대로 */
+ipcMain.handle('get-app-version', () => app.getVersion());
+
 
 /* ProgID가 레지스트리(HKEY_CLASSES_ROOT)에 등록되어 있으면 설치된 것으로 봅니다.
    64비트 reg.exe는 기본적으로 64비트 보기만 보므로, 32비트로 설치된 프로그램을

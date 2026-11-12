@@ -1129,7 +1129,11 @@ try{
 
 <div id="welcome">
   <div class="libhead">
-    <h1 id="libTitle2">서재</h1>
+    <div style="display:flex;align-items:center;gap:10px">
+      <h1 id="libTitle2" style="margin:0">서재</h1>
+      <span id="appVerChip" class="verChip" style="pointer-events:none;min-height:auto;padding:2px 9px;font-size:12px"></span>
+      <button id="btnPromoDownload" class="primary" style="min-height:34px;padding:0 16px;font-size:13px">⬇ 다운받기</button>
+    </div>
     <div class="libtools">
       <div class="segs">
       <button id="btnSort" class="seg on">최근순</button>
@@ -1147,10 +1151,6 @@ try{
       <button id="btnMore2" data-hover="설정" class="ghosticon big" title="설정">⚙︎</button>
       </div>
     </div>
-  </div>
-
-  <div style="text-align:center;margin:0 0 18px">
-    <button id="btnPromoDownload" class="primary" style="padding:0 28px">⬇ 이 프로그램 다운받기</button>
   </div>
 
   <div id="dirBanner" hidden style="margin:0 0 18px;padding:12px 16px;border-radius:10px;
@@ -6092,6 +6092,10 @@ $('btnExplore')&&($('btnExplore').onclick=async()=>{
   if(yes){const ok=await Backup.connect();if(ok)browseSaved()}
 });
 $('btnUp').onclick=()=>{S.lib='';renderFolders();renderRecent()};
+/* 서재 제목 옆 버전 칩 — 설치 파일 버전(package.json) 그대로 표시 */
+if(window.noteall&&window.noteall.getAppVersion){
+  window.noteall.getAppVersion().then(v=>{const el=$('appVerChip');if(el&&v)el.textContent='v'+v});
+}
 /* 서재 맨 아래 홍보 도식의 다운로드 버튼 — 다른 선생님 PC에서는 보통
    브라우저가 뜰 수 있게(window.noteall) 메인 프로세스에 맡기고,
    혹시 브라우저로 바로 연 경우엔 그냥 새 탭으로 엽니다. */
