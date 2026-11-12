@@ -5724,9 +5724,9 @@ $('btnUndo').onclick=undoOnce;
    지우지 못했습니다. 여기서도 같은 버튼으로 지울 수 있게 합니다. */
 $('btnClear').onclick=async()=>{
   if(S.webDoc){
-    if(!webStrokes.length){toast('지금 화면에 필기가 없습니다');return}
+    if(!webStrokes.length&&!webImgs.length){toast('지금 화면에 필기가 없습니다');return}
     if(await askConfirm('크롬 화면의 필기를 모두 지웁니다. 계속할까요?')){
-      webStrokes=[];webCur=null;redrawWebInk();
+      webStrokes=[];webCur=null;webImgs=[];webCutRect=null;webImgDrag=null;redrawWebInk();
       setTool('hand',$('btnHand'));
     }
     return;
@@ -5742,9 +5742,9 @@ $('btnClear').onclick=async()=>{
 };
 $('btnClearAll').onclick=async()=>{
   if(S.webDoc){
-    if(!webStrokes.length){toast('지금 화면에 필기가 없습니다');return}
+    if(!webStrokes.length&&!webImgs.length){toast('지금 화면에 필기가 없습니다');return}
     if(!await askConfirm('크롬 화면의 필기를 모두 지웁니다. 계속할까요?'))return;
-    webStrokes=[];webCur=null;redrawWebInk();
+    webStrokes=[];webCur=null;webImgs=[];webCutRect=null;webImgDrag=null;redrawWebInk();
     toast('필기를 지웠습니다');
     return;
   }
@@ -5968,7 +5968,7 @@ async function openWebBoard(startUrl){
   webActiveTab=1;
   const wv=await getWebview(1);
   wv.src=startUrl||'https://www.google.com';
-  webStrokes=[];webCur=null;
+  webStrokes=[];webCur=null;webImgs=[];webCutRect=null;webImgDrag=null;
   if(typeof setWebDraw==='function')setWebDraw(false);   /* 열자마자는 페이지 조작부터 */
   if(typeof resizeWebInk==='function')resizeWebInk();
   if(typeof revealSideL==='function')revealSideL();
@@ -5982,7 +5982,7 @@ function closeWebBoard(){
   $('webTabs').hidden=true;
   for(const k of [1,2]){ if(webTabs[k]&&webTabs[k].isConnected)webTabs[k].remove(); webTabs[k]=null; }
   webActiveTab=1;
-  webStrokes=[];webCur=null;webDrawOn=false;
+  webStrokes=[];webCur=null;webDrawOn=false;webImgs=[];webCutRect=null;webImgDrag=null;
 }
 /* 크롬(웹) 화면 위에 바로 쓰는 투명 필기 레이어 — 칠판(BD)과는 완전히
    별개의, 이 세션에서만 쓰는 가벼운 레이어입니다(저장 안 함, PDF 변환
@@ -5993,8 +5993,56 @@ function closeWebBoard(){
    클릭이 그 밑 웹페이지로 그대로 전달됩니다 — 그 외 도구는 전부
    그려야 하므로, 지금 도구가 그리는 도구인지부터 확인합니다. */
 let webStrokes=[],webCur=null,webDrawOn=false;
-function webDrawsTool(t){ return t==='pen'||t==='hl'||t==='eraser'||t==='laser'; }
+function webDrawsTool(t){ return t==='pen'||t==='hl'||t==='eraser'||t==='laser'||t==='cut'; }
 function webInkActive(){ return S.webDoc&&webDrawOn&&webDrawsTool(S.tool); }
+/* 크롬·유튜브 "오리기" — PDF처럼 화면 일부를 사진으로 오려서, 끌어
+   옮기거나 칠판으로 보낼 수 있습니다(저장은 안 함, 도구를 끄면
+   필기와 함께 사라집니다 — 처음 합의한 범위와 같습니다). */
+let webImgs=[],webCutRect=null,webImgDrag=null;
+function webImgHit(x,y){
+  for(let i=webImgs.length-1;i>=0;i--){
+    const it=webImgs[i];
+    if(x>=it.x&&x<=it.x+it.w&&y>=it.y&&y<=it.y+it.h)return it;
+  }
+  return null;
+}
+function webImgBadgeRect(it){ return {x:it.x+it.w-26,y:it.y+4,w:22,h:22}; }
+async function sendWebImgToBoard(it){
+  if(!S.split)await applySplitMode(1,true);
+  bdResize();
+  const k=bdSc(),visW=BD.w/k,visH=BD.h/k;
+  let w=it.w/k;
+  if(w>visW*0.6)w=visW*0.6;
+  if(w*it.ar>visH*0.6)w=visH*0.6/it.ar;
+  BD.imgs=BD.imgs||[];
+  BD.imgs.push({id:it.id,src:it.src,ar:it.ar,w,rot:0,
+    x:(BD.ox||0)+(visW-w)/2,y:(BD.oy||0)+(visH-w*it.ar)/2});
+  BD.sel=it.id;
+  webImgs=webImgs.filter(q=>q!==it);
+  redrawWebInk();bdRedraw();bdSaveSoon();
+  toast('칠판으로 보냈습니다');
+}
+async function finalizeWebCut(rect){
+  const x0=Math.min(rect.x0,rect.x1),y0=Math.min(rect.y0,rect.y1);
+  const wc=Math.abs(rect.x1-rect.x0),hc=Math.abs(rect.y1-rect.y0);
+  if(wc<24||hc<24){toast('너무 작습니다 — 조금 더 넓게 잡아 주세요');return}
+  const wv=webTabs[webActiveTab];
+  if(!wv||typeof wv.capturePage!=='function'){toast('이 화면은 오릴 수 없습니다');return}
+  try{
+    /* 화면 전체를 찍어서 자르면(캡처가 무거워) 찍는 동안 커서가 잠깐
+       사라진 것처럼 보였습니다 — 오린 자리만 바로 찍어 가볍게 합니다. */
+    const img=await wv.capturePage({x:Math.round(x0),y:Math.round(y0),
+      width:Math.round(wc),height:Math.round(hc)});
+    const src=img.toDataURL();
+    const el=new Image();
+    el.onload=()=>redrawWebInk();
+    el.src=src;
+    webImgs.push({id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      src,ar:hc/wc,w:wc,h:hc,x:x0,y:y0,_img:el});
+    redrawWebInk();
+    toast('오렸습니다 — 끌어서 옮기거나, 오른쪽 위 ▥ 를 누르면 칠판으로 갑니다');
+  }catch(e){toast('오리지 못했습니다: '+(e&&e.message||e))}
+}
 const webLaser={list:[],raf:0,last:0};
 function webLaserPoint(x,y,start){
   webLaser.last=performance.now();
@@ -6034,8 +6082,8 @@ function setWebDraw(on){
   /* 도구를 끄면(이동으로 바꾸거나 직접 끄면) 그려 둔 필기를 자동으로
      지웁니다 — 애초에 저장하지 않는 세션용 필기라, 끄는 순간이 바로
      "이 화면 다 봤다"는 뜻이기 때문입니다. */
-  if(webDrawOn&&!on&&webStrokes.length){
-    webStrokes=[];webCur=null;
+  if(webDrawOn&&!on&&(webStrokes.length||webImgs.length)){
+    webStrokes=[];webCur=null;webImgs=[];webCutRect=null;webImgDrag=null;
     webLaser.list=[];webLaser.raf=0;
     redrawWebInk();
   }
@@ -6063,8 +6111,28 @@ function redrawWebInk(){
   const el=$('webInk');if(!el)return;
   const cx=el.getContext('2d');
   cx.save();cx.setTransform(1,0,0,1,0,0);cx.clearRect(0,0,el.width,el.height);cx.restore();
+  /* 오려 붙인 사진 — 필기보다 먼저(아래에) 그립니다 */
+  for(const it of webImgs){
+    if(it._img&&it._img.complete)cx.drawImage(it._img,it.x,it.y,it.w,it.h);
+    else{cx.save();cx.strokeStyle='#f5d547';cx.setLineDash([4,4]);cx.strokeRect(it.x,it.y,it.w,it.h);cx.restore()}
+    if(S.tool==='cut'){
+      const b=webImgBadgeRect(it);
+      cx.save();cx.fillStyle='rgba(20,29,38,.88)';cx.strokeStyle='#f5d547';cx.lineWidth=1.5;
+      cx.beginPath();cx.roundRect?cx.roundRect(b.x,b.y,b.w,b.h,5):cx.rect(b.x,b.y,b.w,b.h);
+      cx.fill();cx.stroke();
+      cx.fillStyle='#f5d547';cx.font='13px sans-serif';cx.textAlign='center';cx.textBaseline='middle';
+      cx.fillText('▥',b.x+b.w/2,b.y+b.h/2+1);
+      cx.restore();
+    }
+  }
   for(const s of webStrokes)paintWebStroke(cx,s);
   if(webCur)paintWebStroke(cx,webCur);
+  if(webCutRect){
+    cx.save();cx.strokeStyle='#f5d547';cx.lineWidth=1.5;cx.setLineDash([5,4]);
+    const x0=Math.min(webCutRect.x0,webCutRect.x1),y0=Math.min(webCutRect.y0,webCutRect.y1);
+    const w=Math.abs(webCutRect.x1-webCutRect.x0),h=Math.abs(webCutRect.y1-webCutRect.y0);
+    cx.strokeRect(x0,y0,w,h);cx.restore();
+  }
 }
 function resizeWebInk(){
   const el=$('webInk'),stage=$('webStage');if(!el||!stage)return;
@@ -6096,6 +6164,18 @@ function resizeWebInk(){
       if(out){webStrokes=out;redrawWebInk()}
       return;
     }
+    if(S.tool==='cut'){
+      /* 사진에 달린 ▥(칠판으로) 자리를 먼저, 그 다음 몸체(끌기), 둘 다
+         아니면 새로 오릴 네모를 긋기 시작합니다 */
+      for(const it of webImgs){
+        const b=webImgBadgeRect(it);
+        if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h){sendWebImgToBoard(it);return}
+      }
+      const hit=webImgHit(x,y);
+      if(hit){webImgDrag={it:hit,dx:x-hit.x,dy:y-hit.y};return}
+      webCutRect={x0:x,y0:y,x1:x,y1:y};
+      return;
+    }
     const color=S.colors[S.tool]||S.colors.pen;
     webCur={tool:S.tool,color,size:S.sizes[S.tool]||S.sizes.pen,pts:[[x,y]]};
   });
@@ -6109,11 +6189,21 @@ function resizeWebInk(){
       if(out){webStrokes=out;redrawWebInk()}
       return;
     }
+    if(S.tool==='cut'){
+      if(webImgDrag){webImgDrag.it.x=x-webImgDrag.dx;webImgDrag.it.y=y-webImgDrag.dy;redrawWebInk();return}
+      if(webCutRect){webCutRect.x1=x;webCutRect.y1=y;redrawWebInk();return}
+      return;
+    }
     if(!webCur)return;
     webCur.pts.push([x,y]);
     redrawWebInk();
   });
-  const endStroke=()=>{ webDown=false; if(webCur){webStrokes.push(webCur);webCur=null} };
+  const endStroke=()=>{
+    webDown=false;
+    if(webImgDrag){webImgDrag=null;return}
+    if(webCutRect){const r2=webCutRect;webCutRect=null;finalizeWebCut(r2);return}
+    if(webCur){webStrokes.push(webCur);webCur=null}
+  };
   el.addEventListener('pointerup',endStroke);
   el.addEventListener('pointercancel',endStroke);
   window.addEventListener('resize',()=>{ if(S.webDoc)resizeWebInk() });
