@@ -81,6 +81,12 @@ ipcMain.handle('open-naver-whale', () => {
   execFile('cmd.exe', ['/c', 'start', '', 'whale', 'https://www.naver.com', '--start-maximized'], { windowsHide: true });
 });
 
+/* 서재 화면의 "다운로드" 홍보 버튼 — 다른 선생님이 설치 파일을 받을 수 있게
+   기본 브라우저로 다운로드 페이지를 엽니다. */
+ipcMain.handle('open-download-page', () => {
+  shell.openExternal('https://botem.com/noteall');
+});
+
 
 /* ProgID가 레지스트리(HKEY_CLASSES_ROOT)에 등록되어 있으면 설치된 것으로 봅니다.
    64비트 reg.exe는 기본적으로 64비트 보기만 보므로, 32비트로 설치된 프로그램을
