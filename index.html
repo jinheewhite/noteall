@@ -150,6 +150,7 @@ try{
   #tools>#btnCut{order:3}
   #tools>#btnShape{order:4}
   #tools>#btnEraser{order:5}
+  #tools>#btnEraserSm{order:5}        /* 작게·중간 지우개가 order 를 안 받아 맨 앞으로 떨어져 있었습니다 */
   #tools>#btnEraseAll{order:5}        /* 지우개 바로 옆 — 같은 order 는 쓴 순서대로 놓입니다 */
   #tools>#btnLaser{order:6}
   #tools>#btnHl{order:7}
@@ -6078,9 +6079,14 @@ function resizeWebInk(){
   /* 지우개는 PDF·칠판과 똑같이 cutStrokes() 로 실제 점을 지웁니다(끈 뒤에
      한 번에 지우는 게 아니라, PDF처럼 끄는 동안 바로바로 지워집니다).
      레이저는 webLaserPoint() 로 — webStrokes 에는 전혀 들어가지 않고
-     PDF와 같은 시간(laser.HOLD/FADE)으로 번졌다 사라집니다. */
+     PDF와 같은 시간(laser.HOLD/FADE)으로 번졌다 사라집니다.
+     눌러서 끌 때만(pointermove 는 누르지 않아도 그냥 지나가기만 해도
+     불러요) 그려야 하므로, 눌려 있는 동안만 표시하는 깃발을 둡니다 —
+     안 그러면 마우스만 지나가도 레이저·지우개가 따라왔습니다. */
+  let webDown=false;
   el.addEventListener('pointerdown',e=>{
     if(!webInkActive())return;
+    webDown=true;
     try{el.setPointerCapture(e.pointerId)}catch(err){}
     const r=el.getBoundingClientRect();
     const x=e.clientX-r.left,y=e.clientY-r.top;
@@ -6094,7 +6100,7 @@ function resizeWebInk(){
     webCur={tool:S.tool,color,size:S.sizes[S.tool]||S.sizes.pen,pts:[[x,y]]};
   });
   el.addEventListener('pointermove',e=>{
-    if(!webInkActive())return;
+    if(!webDown||!webInkActive())return;
     const r=el.getBoundingClientRect();
     const x=e.clientX-r.left,y=e.clientY-r.top;
     if(S.tool==='laser'){webLaserPoint(x,y,false);return}
@@ -6107,7 +6113,7 @@ function resizeWebInk(){
     webCur.pts.push([x,y]);
     redrawWebInk();
   });
-  const endStroke=()=>{ if(webCur){webStrokes.push(webCur);webCur=null} };
+  const endStroke=()=>{ webDown=false; if(webCur){webStrokes.push(webCur);webCur=null} };
   el.addEventListener('pointerup',endStroke);
   el.addEventListener('pointercancel',endStroke);
   window.addEventListener('resize',()=>{ if(S.webDoc)resizeWebInk() });
@@ -6323,20 +6329,35 @@ async function pickFolder(file){
 async function cleanupDuplicateFiles(){
   try{
     const all=(await Store.allFiles()).filter(x=>x&&!String(x.id).startsWith('__'));
+    console.log('[DEDUP DEBUG] mode=',Store.mode,'count=',all.length,
+      JSON.stringify(all.map(f=>({id:f.id,name:f.name,opened:f.opened,sig:f.sig}))));
     const groups=new Map();
     for(const f of all){
       const key=String(f.name||'').normalize('NFC').trim();
       if(!groups.has(key))groups.set(key,[]);
       groups.get(key).push(f);
     }
+    let dupGroups=0,deleted=0;
     for(const list of groups.values()){
       if(list.length<2)continue;
+      dupGroups++;
+      console.log('[DEDUP DEBUG] group of',list.length,'for name',JSON.stringify(list[0].name));
       list.sort((a,b)=>(b.opened||0)-(a.opened||0));
-      for(const dup of list.slice(1))await Store.delFile(dup.id);
+      for(const dup of list.slice(1)){
+        console.log('[DEDUP DEBUG] deleting id',dup.id);
+        await Store.delFile(dup.id);deleted++;
+      }
     }
-  }catch(e){}
+    const after=(await Store.allFiles()).filter(x=>x&&!String(x.id).startsWith('__'));
+    console.log('[DEDUP DEBUG] after cleanup count=',after.length);
+    /* 임시 진단 — 개발자 도구 없이도 눈으로 바로 확인할 수 있게 */
+    setTimeout(()=>toast(`진단: 저장소 ${all.length}개(겹친 묶음 ${dupGroups}, 지움 ${deleted}) → 정리 후 ${after.length}개`),2500);
+  }catch(e){console.log('[DEDUP DEBUG] error',e&&e.message);setTimeout(()=>toast('진단 오류: '+(e&&e.message)),2500)}
 }
+let __renderRecentCalls=0;
 async function renderRecent(){
+  const __callNo=++__renderRecentCalls;
+  console.log('[DEDUP DEBUG] renderRecent call #'+__callNo+' START, S.sort='+S.sort);
   /* 서재를 보고 있는지 표시합니다. 처음 앱을 열 때는 서재가 원래부터
      떠 있어 '켜는 코드'가 돌지 않으므로, 그릴 때마다 맞춰 줍니다. */
   setLibOpen(!S.doc);
@@ -6486,7 +6507,8 @@ async function renderRecent(){
   }
   $('libEmpty').hidden=true;
   $('libEmpty').textContent=S.q?'검색 결과가 없습니다.':'아직 자료가 없습니다. 위의 PDF 열기로 수업 자료를 불러오세요.';
-
+  console.log('[DEDUP DEBUG] renderRecent call #'+__callNo+' END files.length='+files.length+' list.children='+list.children.length+' grid.children='+grid.children.length);
+  if(__callNo<=3)setTimeout(()=>toast(`그리기#${__callNo}: 자료 ${files.length}개 → 화면 카드 ${list.children.length}개`),4500+__callNo*500);
 }
 
 /* 표지의 ⋯ 메뉴 */
